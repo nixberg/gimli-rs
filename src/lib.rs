@@ -13,32 +13,19 @@ impl Gimli {
     pub fn permute(&mut self) {
         let (mut a, mut b, mut c) = self.unpack();
 
-        let round_constants = &[
+        for round_constant in &[
             0x9e377918, 0x9e377914, 0x9e377910, 0x9e37790c, 0x9e377908, 0x9e377904,
-        ];
-
-        #[inline]
-        fn apply_sp_box(a: &mut u32x4, b: &mut u32x4, c: &mut u32x4) {
-            let x = rotate_lanes(*a, 24);
-            let y = rotate_lanes(*b, 9);
-            let z = *c;
-
-            *c = x ^ (z << 1) ^ ((y & z) << 2);
-            *b = y ^ x ^ ((x | z) << 1);
-            *a = z ^ y ^ ((x & y) << 3);
-        }
-
-        for &round_constant in round_constants {
-            apply_sp_box(&mut a, &mut b, &mut c);
+        ] {
+            sp_box(&mut a, &mut b, &mut c);
             a = small_swap(a);
-            a ^= u32x4::new(round_constant, 0, 0, 0);
+            a ^= u32x4::new(*round_constant, 0, 0, 0);
 
-            apply_sp_box(&mut a, &mut b, &mut c);
+            sp_box(&mut a, &mut b, &mut c);
 
-            apply_sp_box(&mut a, &mut b, &mut c);
+            sp_box(&mut a, &mut b, &mut c);
             a = big_swap(a);
 
-            apply_sp_box(&mut a, &mut b, &mut c);
+            sp_box(&mut a, &mut b, &mut c);
         }
 
         self.pack(a, b, c);
@@ -65,6 +52,17 @@ impl Gimli {
         b_bytes.write_to_slice_unaligned(&mut self.bytes[16..32]);
         c_bytes.write_to_slice_unaligned(&mut self.bytes[32..48]);
     }
+}
+
+#[inline]
+fn sp_box(a: &mut u32x4, b: &mut u32x4, c: &mut u32x4) {
+    let x = rotate_lanes(*a, 24);
+    let y = rotate_lanes(*b, 9);
+    let z = *c;
+
+    *c = x ^ (z << 1) ^ ((y & z) << 2);
+    *b = y ^ x ^ ((x | z) << 1);
+    *a = z ^ y ^ ((x & y) << 3);
 }
 
 #[inline]
