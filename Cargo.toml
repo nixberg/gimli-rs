@@ -1,0 +1,8 @@
+[package]
+name = "gimli"
+version = "0.1.0"
+authors = ["nixberg <k.nixberg@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+packed_simd_2 = { version = "0", features = ["into_bits"] }
