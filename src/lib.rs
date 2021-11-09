@@ -1,4 +1,6 @@
-use packed_simd_2::{shuffle, u32x4, u8x16, IntoBits};
+#![feature(portable_simd)]
+
+use core_simd::*;
 
 #[derive(Clone)]
 pub struct Gimli {
@@ -13,17 +15,17 @@ impl Gimli {
     pub fn permute(&mut self) {
         let (mut a, mut b, mut c) = self.unpack();
 
-        for round_constant in &[
+        for round_constant in [
             0x9e377918, 0x9e377914, 0x9e377910, 0x9e37790c, 0x9e377908, 0x9e377904,
         ] {
             sp_box(&mut a, &mut b, &mut c);
-            a = small_swap(a);
-            a ^= u32x4::new(*round_constant, 0, 0, 0);
+            a = simd_swizzle!(a, [1, 0, 3, 2]);
+            a ^= u32x4::from_array([round_constant, 0, 0, 0]);
 
             sp_box(&mut a, &mut b, &mut c);
 
             sp_box(&mut a, &mut b, &mut c);
-            a = big_swap(a);
+            a = simd_swizzle!(a, [2, 3, 0, 1]);
 
             sp_box(&mut a, &mut b, &mut c);
         }
@@ -33,31 +35,56 @@ impl Gimli {
 
     #[inline]
     fn unpack(&self) -> (u32x4, u32x4, u32x4) {
-        let a_le: u32x4 = u8x16::from_slice_unaligned(&self.bytes[00..16]).into_bits();
-        let b_le: u32x4 = u8x16::from_slice_unaligned(&self.bytes[16..32]).into_bits();
-        let c_le: u32x4 = u8x16::from_slice_unaligned(&self.bytes[32..48]).into_bits();
         (
-            u32x4::from_le(a_le),
-            u32x4::from_le(b_le),
-            u32x4::from_le(c_le),
+            u32x4::from_le_bytes(u8x16::from_array(self.bytes[00..16].try_into().unwrap())),
+            u32x4::from_le_bytes(u8x16::from_array(self.bytes[16..32].try_into().unwrap())),
+            u32x4::from_le_bytes(u8x16::from_array(self.bytes[32..48].try_into().unwrap())),
         )
     }
 
     #[inline]
     fn pack(&mut self, a: u32x4, b: u32x4, c: u32x4) {
-        let a_bytes: u8x16 = u32x4::to_le(a).into_bits();
-        let b_bytes: u8x16 = u32x4::to_le(b).into_bits();
-        let c_bytes: u8x16 = u32x4::to_le(c).into_bits();
-        a_bytes.write_to_slice_unaligned(&mut self.bytes[00..16]);
-        b_bytes.write_to_slice_unaligned(&mut self.bytes[16..32]);
-        c_bytes.write_to_slice_unaligned(&mut self.bytes[32..48]);
+        self.bytes[00..16].copy_from_slice(a.to_le_bytes().as_array());
+        self.bytes[16..32].copy_from_slice(b.to_le_bytes().as_array());
+        self.bytes[32..48].copy_from_slice(c.to_le_bytes().as_array());
+    }
+}
+
+trait GimliInternal {
+    fn from_le_bytes(bytes: u8x16) -> Self;
+
+    fn to_le_bytes(self) -> u8x16;
+
+    fn rotate_left<const OFFSET: u32>(&self) -> u32x4;
+}
+
+impl GimliInternal for u32x4 {
+    fn from_le_bytes(bytes: u8x16) -> Self {
+        let mut vector = Self::from_ne_bytes(bytes);
+        vector
+            .as_mut_array()
+            .iter_mut()
+            .for_each(|lane| *lane = lane.to_le());
+        vector
+    }
+
+    fn to_le_bytes(mut self) -> u8x16 {
+        self.as_mut_array()
+            .iter_mut()
+            .for_each(|lane| *lane = u32::from_le(*lane));
+        self.to_ne_bytes()
+    }
+
+    #[inline]
+    fn rotate_left<const OFFSET: u32>(&self) -> u32x4 {
+        (self << OFFSET) | (self >> (32 - OFFSET))
     }
 }
 
 #[inline]
 fn sp_box(a: &mut u32x4, b: &mut u32x4, c: &mut u32x4) {
-    let x = rotate_lanes(*a, 24);
-    let y = rotate_lanes(*b, 9);
+    let x = a.rotate_left::<24>();
+    let y = b.rotate_left::<9>();
     let z = *c;
 
     *c = x ^ (z << 1) ^ ((y & z) << 2);
@@ -65,19 +92,10 @@ fn sp_box(a: &mut u32x4, b: &mut u32x4, c: &mut u32x4) {
     *a = z ^ y ^ ((x & y) << 3);
 }
 
-#[inline]
-fn rotate_lanes(x: u32x4, n: u32) -> u32x4 {
-    x.rotate_left(u32x4::splat(n))
-}
-
-#[inline]
-fn small_swap(x: u32x4) -> u32x4 {
-    shuffle!(x, [1, 0, 3, 2])
-}
-
-#[inline]
-fn big_swap(x: u32x4) -> u32x4 {
-    shuffle!(x, [2, 3, 0, 1])
+impl Default for Gimli {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -86,7 +104,7 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let mut gimli = Gimli::new();
+        let mut gimli = Gimli::default();
 
         for _ in 0..384 {
             gimli.permute();
