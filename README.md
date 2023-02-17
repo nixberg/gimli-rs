@@ -2,4 +2,5 @@
 
 # gimli-rs
 
-Rust implementation of the [Gimli permutation](https://gimli.cr.yp.to/). Experimental, do not use.
+Rust implementation of the [Gimli permutation](https://gimli.cr.yp.to/).
+Experimental, do not use.

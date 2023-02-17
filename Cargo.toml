@@ -1,8 +1,5 @@
 [package]
 name = "gimli"
 version = "0.1.0"
-authors = ["nixberg <k.nixberg@gmail.com>"]
+authors = ["nixberg"]
 edition = "2021"
-
-[dependencies]
-core_simd = { git = "https://github.com/rust-lang/portable-simd" }

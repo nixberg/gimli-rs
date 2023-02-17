@@ -1,6 +1,6 @@
 #![feature(portable_simd)]
 
-use core_simd::*;
+use std::simd::{simd_swizzle, u32x4};
 
 #[derive(Clone)]
 pub struct Gimli {
@@ -36,60 +36,62 @@ impl Gimli {
     #[inline]
     fn unpack(&self) -> (u32x4, u32x4, u32x4) {
         (
-            u32x4::from_le_bytes(u8x16::from_array(self.bytes[00..16].try_into().unwrap())),
-            u32x4::from_le_bytes(u8x16::from_array(self.bytes[16..32].try_into().unwrap())),
-            u32x4::from_le_bytes(u8x16::from_array(self.bytes[32..48].try_into().unwrap())),
+            u32x4::from_le_bytes(self.bytes[00..16].try_into().unwrap()),
+            u32x4::from_le_bytes(self.bytes[16..32].try_into().unwrap()),
+            u32x4::from_le_bytes(self.bytes[32..48].try_into().unwrap()),
         )
     }
 
     #[inline]
     fn pack(&mut self, a: u32x4, b: u32x4, c: u32x4) {
-        self.bytes[00..16].copy_from_slice(a.to_le_bytes().as_array());
-        self.bytes[16..32].copy_from_slice(b.to_le_bytes().as_array());
-        self.bytes[32..48].copy_from_slice(c.to_le_bytes().as_array());
+        self.bytes[00..16].copy_from_slice(&a.to_le_bytes());
+        self.bytes[16..32].copy_from_slice(&b.to_le_bytes());
+        self.bytes[32..48].copy_from_slice(&c.to_le_bytes());
     }
 }
 
 trait GimliInternal {
-    fn from_le_bytes(bytes: u8x16) -> Self;
+    fn from_le_bytes(bytes: [u8; 16]) -> Self;
 
-    fn to_le_bytes(self) -> u8x16;
+    fn to_le_bytes(self) -> [u8; 16];
 
-    fn rotate_left<const OFFSET: u32>(&self) -> u32x4;
+    fn rotate_left<const OFFSET: u32>(&self) -> Self;
 }
 
 impl GimliInternal for u32x4 {
-    fn from_le_bytes(bytes: u8x16) -> Self {
-        let mut vector = Self::from_ne_bytes(bytes);
-        vector
+    #[inline]
+    fn from_le_bytes(bytes: [u8; 16]) -> Self {
+        let mut words: u32x4 = unsafe { std::mem::transmute(bytes) };
+        words
             .as_mut_array()
             .iter_mut()
             .for_each(|lane| *lane = lane.to_le());
-        vector
-    }
-
-    fn to_le_bytes(mut self) -> u8x16 {
-        self.as_mut_array()
-            .iter_mut()
-            .for_each(|lane| *lane = u32::from_le(*lane));
-        self.to_ne_bytes()
+        words
     }
 
     #[inline]
-    fn rotate_left<const OFFSET: u32>(&self) -> u32x4 {
-        (self << OFFSET) | (self >> (32 - OFFSET))
+    fn to_le_bytes(mut self) -> [u8; 16] {
+        self.as_mut_array()
+            .iter_mut()
+            .for_each(|lane| *lane = u32::from_le(*lane));
+        unsafe { std::mem::transmute(self) }
+    }
+
+    #[inline]
+    fn rotate_left<const OFFSET: u32>(&self) -> Self {
+        (self << Self::splat(OFFSET)) | (self >> Self::splat(32 - OFFSET))
     }
 }
 
 #[inline]
 fn sp_box(a: &mut u32x4, b: &mut u32x4, c: &mut u32x4) {
     let x = a.rotate_left::<24>();
-    let y = b.rotate_left::<9>();
+    let y = b.rotate_left::<09>();
     let z = *c;
 
-    *c = x ^ (z << 1) ^ ((y & z) << 2);
-    *b = y ^ x ^ ((x | z) << 1);
-    *a = z ^ y ^ ((x & y) << 3);
+    *c = x ^ (z << u32x4::splat(1)) ^ ((y & z) << u32x4::splat(2));
+    *b = y ^ x ^ ((x | z) << u32x4::splat(1));
+    *a = z ^ y ^ ((x & y) << u32x4::splat(3));
 }
 
 impl Default for Gimli {
