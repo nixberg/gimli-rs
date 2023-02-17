@@ -1,4 +1,4 @@
-[![Rust](https://github.com/nixberg/gimli-rs/actions/workflows/rust.yml/badge.svg)](https://github.com/nixberg/gimli-rs/actions/workflows/rust.yml)
+[![Rust](https://github.com/nixberg/gimli-rs/actions/workflows/rust.yaml/badge.svg)](https://github.com/nixberg/gimli-rs/actions/workflows/rust.yaml)
 
 # gimli-rs
 
