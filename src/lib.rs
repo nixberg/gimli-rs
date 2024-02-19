@@ -1,103 +1,57 @@
 #![feature(portable_simd)]
 
-use std::simd::{simd_swizzle, u32x4};
+use std::simd::{simd_swizzle, u32x4, u8x16, ToBytes};
 
-#[derive(Clone)]
 pub struct Gimli {
-    a: u32x4,
-    b: u32x4,
-    c: u32x4,
+    bytes: [u8; 48],
 }
 
 impl Gimli {
-    pub fn new() -> Self {
-        Self {
-            a: u32x4::splat(0),
-            b: u32x4::splat(0),
-            c: u32x4::splat(0),
-        }
+    pub const fn new() -> Self {
+        Self { bytes: [0; 48] }
     }
 
     pub fn permute(&mut self) {
-        self.a.from_le();
-        self.b.from_le();
-        self.c.from_le();
+        let mut a = u32x4::from_le_bytes(u8x16::from_array(self.bytes[00..16].try_into().unwrap()));
+        let mut b = u32x4::from_le_bytes(u8x16::from_array(self.bytes[16..32].try_into().unwrap()));
+        let mut c = u32x4::from_le_bytes(u8x16::from_array(self.bytes[32..48].try_into().unwrap()));
 
         for round_constant in [
             0x9e377918, 0x9e377914, 0x9e377910, 0x9e37790c, 0x9e377908, 0x9e377904,
         ] {
-            self.sp_box();
-            self.a = simd_swizzle!(self.a, [1, 0, 3, 2]);
-            self.a ^= u32x4::from_array([round_constant, 0, 0, 0]);
+            (a, b, c) = sp_box(a, b, c);
+            a = simd_swizzle!(a, [1, 0, 3, 2]);
+            a ^= u32x4::from_array([round_constant, 0, 0, 0]);
 
-            self.sp_box();
+            (a, b, c) = sp_box(a, b, c);
 
-            self.sp_box();
-            self.a = simd_swizzle!(self.a, [2, 3, 0, 1]);
+            (a, b, c) = sp_box(a, b, c);
+            a = simd_swizzle!(a, [2, 3, 0, 1]);
 
-            self.sp_box();
+            (a, b, c) = sp_box(a, b, c);
         }
 
-        self.a.to_le();
-        self.b.to_le();
-        self.c.to_le();
-    }
-
-    #[inline(always)]
-    pub fn bytes_view(&self) -> &[u8] {
-        unsafe { core::slice::from_raw_parts(self as *const _ as *const u8, 48) }
-    }
-
-    #[inline(always)]
-    pub fn bytes_view_mut(&mut self) -> &mut [u8] {
-        unsafe { core::slice::from_raw_parts_mut(self as *mut _ as *mut u8, 48) }
-    }
-
-    #[inline(always)]
-    fn sp_box(&mut self) {
-        let x = self.a.rotate_left::<24>();
-        let y = self.b.rotate_left::<09>();
-        let z = self.c;
-
-        self.c = x ^ (z << u32x4::splat(1)) ^ ((y & z) << u32x4::splat(2));
-        self.b = y ^ x ^ ((x | z) << u32x4::splat(1));
-        self.a = z ^ y ^ ((x & y) << u32x4::splat(3));
+        self.bytes[00..16].copy_from_slice(a.to_le_bytes().as_array());
+        self.bytes[16..32].copy_from_slice(b.to_le_bytes().as_array());
+        self.bytes[32..48].copy_from_slice(c.to_le_bytes().as_array());
     }
 }
 
-trait GimliInternal {
-    fn from_le(&mut self);
-
-    fn rotate_left<const OFFSET: u32>(&self) -> Self;
-
-    fn to_le(&mut self);
+#[inline(always)]
+fn sp_box(a: u32x4, b: u32x4, c: u32x4) -> (u32x4, u32x4, u32x4) {
+    let x = rotate_left::<24>(a);
+    let y = rotate_left::<09>(b);
+    let z = c;
+    (
+        z ^ y ^ (x & y) << u32x4::splat(3),
+        y ^ x ^ (x | z) << u32x4::splat(1),
+        x ^ z << u32x4::splat(1) ^ (y & z) << u32x4::splat(2),
+    )
 }
 
-impl GimliInternal for u32x4 {
-    #[inline(always)]
-    fn from_le(&mut self) {
-        self.as_mut_array()
-            .iter_mut()
-            .for_each(|lane| *lane = u32::from_le(*lane));
-    }
-
-    #[inline(always)]
-    fn rotate_left<const OFFSET: u32>(&self) -> Self {
-        (self << Self::splat(OFFSET)) | (self >> Self::splat(32 - OFFSET))
-    }
-
-    #[inline(always)]
-    fn to_le(&mut self) {
-        self.as_mut_array()
-            .iter_mut()
-            .for_each(|lane| *lane = lane.to_le());
-    }
-}
-
-impl Default for Gimli {
-    fn default() -> Self {
-        Self::new()
-    }
+#[inline(always)]
+fn rotate_left<const OFFSET: u32>(x: u32x4) -> u32x4 {
+    x << u32x4::splat(OFFSET) | x >> u32x4::splat(32 - OFFSET)
 }
 
 #[cfg(test)]
@@ -107,14 +61,14 @@ mod tests {
     #[test]
     fn it_works() {
         {
-            let mut gimli = Gimli::default();
+            let mut gimli = Gimli::new();
 
             for _ in 0..384 {
                 gimli.permute();
             }
 
             assert_eq!(
-                gimli.bytes_view(),
+                gimli.bytes,
                 [
                     0xf7, 0xb2, 0xd5, 0x86, 0x5e, 0x79, 0x28, 0x27, 0xcb, 0xad, 0xe4, 0x14, 0x07,
                     0x5f, 0x6e, 0x3e, 0x40, 0x8a, 0xcc, 0x2f, 0xdb, 0xb7, 0xbb, 0x56, 0x47, 0x08,

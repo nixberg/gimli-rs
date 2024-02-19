@@ -1,5 +1,5 @@
 [package]
-name = "gimli"
-version = "0.1.0"
 authors = ["nixberg"]
 edition = "2021"
+name    = "gimli"
+version = "0.1.0"
