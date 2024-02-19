@@ -2,19 +2,18 @@
 
 use std::simd::{simd_swizzle, u32x4, u8x16, ToBytes};
 
-pub struct Gimli {
-    bytes: [u8; 48],
-}
+#[derive(Clone)]
+pub struct Gimli(pub [u8; 48]);
 
 impl Gimli {
     pub const fn new() -> Self {
-        Self { bytes: [0; 48] }
+        Self([0; 48])
     }
 
     pub fn permute(&mut self) {
-        let mut a = u32x4::from_le_bytes(u8x16::from_array(self.bytes[00..16].try_into().unwrap()));
-        let mut b = u32x4::from_le_bytes(u8x16::from_array(self.bytes[16..32].try_into().unwrap()));
-        let mut c = u32x4::from_le_bytes(u8x16::from_array(self.bytes[32..48].try_into().unwrap()));
+        let mut a = u32x4::from_le_bytes(u8x16::from_array(self.0[00..16].try_into().unwrap()));
+        let mut b = u32x4::from_le_bytes(u8x16::from_array(self.0[16..32].try_into().unwrap()));
+        let mut c = u32x4::from_le_bytes(u8x16::from_array(self.0[32..48].try_into().unwrap()));
 
         for round_constant in [
             0x9e377918, 0x9e377914, 0x9e377910, 0x9e37790c, 0x9e377908, 0x9e377904,
@@ -31,9 +30,9 @@ impl Gimli {
             (a, b, c) = sp_box(a, b, c);
         }
 
-        self.bytes[00..16].copy_from_slice(a.to_le_bytes().as_array());
-        self.bytes[16..32].copy_from_slice(b.to_le_bytes().as_array());
-        self.bytes[32..48].copy_from_slice(c.to_le_bytes().as_array());
+        self.0[00..16].copy_from_slice(a.to_le_bytes().as_array());
+        self.0[16..32].copy_from_slice(b.to_le_bytes().as_array());
+        self.0[32..48].copy_from_slice(c.to_le_bytes().as_array());
     }
 }
 
@@ -68,7 +67,7 @@ mod tests {
             }
 
             assert_eq!(
-                gimli.bytes,
+                gimli.0,
                 [
                     0xf7, 0xb2, 0xd5, 0x86, 0x5e, 0x79, 0x28, 0x27, 0xcb, 0xad, 0xe4, 0x14, 0x07,
                     0x5f, 0x6e, 0x3e, 0x40, 0x8a, 0xcc, 0x2f, 0xdb, 0xb7, 0xbb, 0x56, 0x47, 0x08,
