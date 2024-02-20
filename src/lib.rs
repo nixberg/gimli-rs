@@ -42,15 +42,15 @@ fn sp_box(a: u32x4, b: u32x4, c: u32x4) -> (u32x4, u32x4, u32x4) {
     let y = rotate_left::<09>(b);
     let z = c;
     (
-        z ^ y ^ (x & y) << u32x4::splat(3),
-        y ^ x ^ (x | z) << u32x4::splat(1),
-        x ^ z << u32x4::splat(1) ^ (y & z) << u32x4::splat(2),
+        z ^ y ^ (x & y) << 3,
+        y ^ x ^ (x | z) << 1,
+        x ^ z << 1 ^ (y & z) << 2,
     )
 }
 
 #[inline(always)]
 fn rotate_left<const OFFSET: u32>(x: u32x4) -> u32x4 {
-    x << u32x4::splat(OFFSET) | x >> u32x4::splat(32 - OFFSET)
+    x << OFFSET | x >> (u32::BITS - OFFSET)
 }
 
 #[cfg(test)]
