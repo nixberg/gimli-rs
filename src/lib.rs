@@ -11,39 +11,38 @@ impl Gimli {
     }
 
     pub fn permute(&mut self) {
-        let mut a = u32x4::from_le_bytes(u8x16::from_array(self.0[00..16].try_into().unwrap()));
-        let mut b = u32x4::from_le_bytes(u8x16::from_array(self.0[16..32].try_into().unwrap()));
-        let mut c = u32x4::from_le_bytes(u8x16::from_array(self.0[32..48].try_into().unwrap()));
+        let mut x = u32x4::from_le_bytes(u8x16::from_array(self.0[00..16].try_into().unwrap()));
+        let mut y = u32x4::from_le_bytes(u8x16::from_array(self.0[16..32].try_into().unwrap()));
+        let mut z = u32x4::from_le_bytes(u8x16::from_array(self.0[32..48].try_into().unwrap()));
 
         for round_constant in [
             0x9e377918, 0x9e377914, 0x9e377910, 0x9e37790c, 0x9e377908, 0x9e377904,
         ] {
-            (a, b, c) = sp_box(a, b, c);
-            a = simd_swizzle!(a, [1, 0, 3, 2]);
-            a ^= u32x4::from_array([round_constant, 0, 0, 0]);
+            (x, y, z) = sp_box(x, y, z);
+            x = simd_swizzle!(x, [1, 0, 3, 2]);
+            x ^= u32x4::from_array([round_constant, 0, 0, 0]);
 
-            (a, b, c) = sp_box(a, b, c);
+            (x, y, z) = sp_box(x, y, z);
 
-            (a, b, c) = sp_box(a, b, c);
-            a = simd_swizzle!(a, [2, 3, 0, 1]);
+            (x, y, z) = sp_box(x, y, z);
+            x = simd_swizzle!(x, [2, 3, 0, 1]);
 
-            (a, b, c) = sp_box(a, b, c);
+            (x, y, z) = sp_box(x, y, z);
         }
 
-        self.0[00..16].copy_from_slice(a.to_le_bytes().as_array());
-        self.0[16..32].copy_from_slice(b.to_le_bytes().as_array());
-        self.0[32..48].copy_from_slice(c.to_le_bytes().as_array());
+        self.0[00..16].copy_from_slice(x.to_le_bytes().as_array());
+        self.0[16..32].copy_from_slice(y.to_le_bytes().as_array());
+        self.0[32..48].copy_from_slice(z.to_le_bytes().as_array());
     }
 }
 
 #[inline(always)]
-fn sp_box(a: u32x4, b: u32x4, c: u32x4) -> (u32x4, u32x4, u32x4) {
-    let x = rotate_left::<24>(a);
-    let y = rotate_left::<09>(b);
-    let z = c;
+fn sp_box(x: u32x4, y: u32x4, z: u32x4) -> (u32x4, u32x4, u32x4) {
+    let x = rotate_left::<24>(x);
+    let y = rotate_left::<09>(y);
     (
-        z ^ y ^ (x & y) << 3,
-        y ^ x ^ (x | z) << 1,
+        z ^ y << 0 ^ (x & y) << 3,
+        y ^ x << 0 ^ (x | z) << 1,
         x ^ z << 1 ^ (y & z) << 2,
     )
 }
